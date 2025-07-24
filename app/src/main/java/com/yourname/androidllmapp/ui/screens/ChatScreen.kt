@@ -26,6 +26,10 @@ import com.yourname.androidllmapp.ui.Message
 import kotlinx.coroutines.launch
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,12 +42,14 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
         viewModel.initializeModel(context)
     }
 
-    ModalBottomSheet(
-        onDismissRequest = { coroutineScope.launch { sheetState.hide() } },
-        sheetState = sheetState
-    ) {
-        SettingsScreen(viewModel) {
-            coroutineScope.launch { sheetState.hide() }
+    if (sheetState.isVisible) {
+        ModalBottomSheet(
+            onDismissRequest = { coroutineScope.launch { sheetState.hide() } },
+            sheetState = sheetState
+        ) {
+            SettingsScreen(viewModel) {
+                coroutineScope.launch { sheetState.hide() }
+            }
         }
     }
 
@@ -132,6 +138,8 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
         }
     }
 
+    val keyboardController = LocalSoftwareKeyboardController.current
+
     Column(
         modifier = Modifier
             .background(MaterialTheme.colorScheme.surface)
@@ -165,7 +173,7 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
 
             Spacer(modifier = Modifier.width(8.dp))
 
-            // Text Input
+            // Text Input (with proper keyboard control)
             OutlinedTextField(
                 value = viewModel.inputText.value,
                 onValueChange = { viewModel.inputText.value = it },
@@ -175,7 +183,16 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
                 placeholder = { Text("Type a message...") },
                 maxLines = 4,
                 singleLine = false,
-                enabled = !viewModel.isModelLoading.value
+                enabled = !viewModel.isModelLoading.value,
+                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Send),
+                keyboardActions = KeyboardActions(
+                    onSend = {
+                        if (viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null) {
+                            viewModel.sendMessage(context)
+                            keyboardController?.hide()
+                        }
+                    }
+                )
             )
 
             // Send or Stop button
@@ -189,7 +206,10 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
                 }
             } else {
                 Button(
-                    onClick = { viewModel.sendMessage(context) },
+                    onClick = {
+                        viewModel.sendMessage(context)
+                        keyboardController?.hide()
+                    },
                     enabled = viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null,
                     shape = CircleShape,
                     modifier = Modifier.size(50.dp)
@@ -208,3 +228,4 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
         }
     }
 }
+
