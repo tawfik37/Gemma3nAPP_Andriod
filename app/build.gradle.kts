@@ -9,6 +9,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
+
         applicationId = "com.yourname.androidllmapp"
         minSdk = 28
         targetSdk = 36
@@ -16,6 +17,20 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
+        }
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a") // for physical devices
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("CMakeLists.txt")
+        }
     }
 
     buildTypes {
@@ -51,7 +66,11 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview:1.6.1")
     debugImplementation("androidx.compose.ui:ui-tooling:1.6.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
-
+    implementation("androidx.camera:camera-core:1.3.1")
+    implementation("androidx.camera:camera-camera2:1.3.1")
+    implementation("androidx.camera:camera-lifecycle:1.3.1")
+    implementation("androidx.camera:camera-view:1.3.1")
+    implementation("androidx.camera:camera-extensions:1.3.1")
     // ✅ MediaPipe Tasks GenAI
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
     implementation("com.google.mediapipe:tasks-vision:0.10.26")

@@ -1,8 +1,7 @@
 package com.yourname.androidllmapp.ui.screens
 
-import android.content.Context
-import android.graphics.BitmapFactory
 import android.net.Uri
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -30,6 +29,10 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import com.yourname.androidllmapp.data.AudioRecorder
+import java.io.File
+import com.yourname.androidllmapp.data.WhisperBridge
+import loadBitmapWithCorrectRotation
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,104 +131,171 @@ fun MessageBubble(message: Message, isThinking: Boolean) {
 
 @Composable
 fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            val stream = context.contentResolver.openInputStream(it)
-            val bitmap = BitmapFactory.decodeStream(stream)
-            viewModel.selectedImage.value = bitmap
+    var isRecording by remember { mutableStateOf(false) }
+    var recordedFile: File? by remember { mutableStateOf(null) }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Button(
+            onClick = {
+                if (!isRecording) {
+                    recordedFile = AudioRecorder.startRecording(context)
+                    isRecording = true
+                } else {
+                    val file = AudioRecorder.stopRecording()
+                    isRecording = false
+                    recordedFile = file
+
+                    if (file != null && file.exists()) {
+                        try {
+                            val modelFile = WhisperBridge.copyWhisperModelFromAssets(context)
+                            val transcript = WhisperBridge.transcribe(file.absolutePath, modelFile.absolutePath)
+                            viewModel.inputText.value = transcript
+                            viewModel.sendMessage(context)
+                            file.delete() // optional
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                            Toast.makeText(context, "❌ Transcription failed", Toast.LENGTH_SHORT).show()
+                        }
+                    } else {
+                        Toast.makeText(context, "❌ No audio file found", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+            shape = CircleShape,
+            modifier = Modifier.size(50.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (isRecording)
+                    MaterialTheme.colorScheme.error
+                else
+                    MaterialTheme.colorScheme.primary
+            )
+        ) {
+            Text(if (isRecording) "⏹" else "🎤")
         }
+
+        Spacer(modifier = Modifier.width(6.dp))
     }
 
-    val keyboardController = LocalSoftwareKeyboardController.current
 
-    Column(
-        modifier = Modifier
-            .background(MaterialTheme.colorScheme.surface)
-            .padding(8.dp)
-    ) {
-        // Show selected image preview if exists
-        viewModel.selectedImage.value?.let { img ->
-            Image(
-                bitmap = img.asImageBitmap(),
-                contentDescription = "Selected Image",
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-                    .clip(RoundedCornerShape(8.dp))
+
+    var showCamera by remember { mutableStateOf(false) }
+
+        if (showCamera) {
+            // ✅ Show the in-app camera preview instead of the chat input
+            CameraPreview(
+                onCapture = { bitmap ->
+                    viewModel.selectedImage.value = bitmap
+                    showCamera = false
+                },
+                onClose = { showCamera = false }
             )
-            Spacer(modifier = Modifier.height(6.dp))
-            TextButton(onClick = { viewModel.selectedImage.value = null }) {
-                Text("Remove Image")
-            }
-        }
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // Gallery Button
-            Button(
-                onClick = { galleryLauncher.launch("image/*") },
-                shape = CircleShape,
-                modifier = Modifier.size(50.dp)
-            ) {
-                Text("📷")
+        } else {
+            val galleryLauncher = rememberLauncherForActivityResult(
+                contract = ActivityResultContracts.GetContent()
+            ) { uri: Uri? ->
+                uri?.let {
+                    val bitmap = loadBitmapWithCorrectRotation(context, uri)
+                    viewModel.selectedImage.value = bitmap
+                }
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            val keyboardController = LocalSoftwareKeyboardController.current
 
-            // Text Input (with proper keyboard control)
-            OutlinedTextField(
-                value = viewModel.inputText.value,
-                onValueChange = { viewModel.inputText.value = it },
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp),
-                placeholder = { Text("Type a message...") },
-                maxLines = 4,
-                singleLine = false,
-                enabled = !viewModel.isModelLoading.value,
-                keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Send),
-                keyboardActions = KeyboardActions(
-                    onSend = {
-                        if (viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null) {
-                            viewModel.sendMessage(context)
-                            keyboardController?.hide()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(8.dp)
+            ) {
+                // ✅ Show selected image preview if exists
+                viewModel.selectedImage.value?.let { img ->
+                    Image(
+                        bitmap = img.asImageBitmap(),
+                        contentDescription = "Selected Image",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(120.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    TextButton(onClick = { viewModel.selectedImage.value = null }) {
+                        Text("Remove Image")
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // ✅ Camera Button
+                    Button(
+                        onClick = { showCamera = true },
+                        shape = CircleShape,
+                        modifier = Modifier.size(50.dp)
+                    ) {
+                        Text("📸")
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // ✅ Gallery Button
+                    Button(
+                        onClick = { galleryLauncher.launch("image/*") },
+                        shape = CircleShape,
+                        modifier = Modifier.size(50.dp)
+                    ) {
+                        Text("🖼")
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // ✅ Text Input
+                    OutlinedTextField(
+                        value = viewModel.inputText.value,
+                        onValueChange = { viewModel.inputText.value = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 8.dp),
+                        placeholder = { Text("Type a message...") },
+                        maxLines = 4,
+                        singleLine = false,
+                        enabled = !viewModel.isModelLoading.value,
+                        keyboardOptions = KeyboardOptions.Default.copy(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null) {
+                                    viewModel.sendMessage(context)
+                                    keyboardController?.hide()
+                                }
+                            }
+                        )
+                    )
+
+                    if (viewModel.isThinking.value) {
+                        Button(
+                            onClick = { viewModel.stopGeneration() },
+                            shape = CircleShape,
+                            modifier = Modifier.size(50.dp)
+                        ) {
+                            Text("■")
+                        }
+                    } else {
+                        Button(
+                            onClick = {
+                                viewModel.sendMessage(context)
+                                keyboardController?.hide()
+                            },
+                            enabled = viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null,
+                            shape = CircleShape,
+                            modifier = Modifier.size(50.dp)
+                        ) {
+                            Text("➤")
                         }
                     }
-                )
-            )
-
-            // Send or Stop button
-            if (viewModel.isThinking.value) {
-                Button(
-                    onClick = { viewModel.stopGeneration() },
-                    shape = CircleShape,
-                    modifier = Modifier.size(50.dp)
-                ) {
-                    Text("■")
                 }
-            } else {
-                Button(
-                    onClick = {
-                        viewModel.sendMessage(context)
-                        keyboardController?.hide()
-                    },
-                    enabled = viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null,
-                    shape = CircleShape,
-                    modifier = Modifier.size(50.dp)
+
+                TextButton(
+                    onClick = { viewModel.clearChat() },
+                    modifier = Modifier.align(Alignment.End)
                 ) {
-                    Text("➤")
+                    Text("Clear Chat")
                 }
             }
         }
-
-        // Clear Chat Button
-        TextButton(
-            onClick = { viewModel.clearChat() },
-            modifier = Modifier.align(Alignment.End)
-        ) {
-            Text("Clear Chat")
-        }
     }
-}
-
