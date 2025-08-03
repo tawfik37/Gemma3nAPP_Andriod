@@ -28,7 +28,7 @@ object LLMManager {
         modelName: String = modelIdentifier,
         topK: Int = 40,
         temperature: Float = 0.8f,
-        enableVision: Boolean = true
+        enableVision: Boolean = false
     ) {
         withContext(Dispatchers.IO) {
             if (llm != null && modelIdentifier == modelName) {
