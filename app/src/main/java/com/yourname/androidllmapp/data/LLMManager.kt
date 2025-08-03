@@ -106,4 +106,15 @@ object LLMManager {
         session = null
         llm = null
     }
+    fun copyModelFromAssets(context: Context): File {
+        val file = File(context.filesDir, "ggml-base.en.bin")
+        if (!file.exists()) {
+            context.assets.open("models/ggml-base.en.bin").use { input ->
+                FileOutputStream(file).use { output ->
+                    input.copyTo(output)
+                }
+            }
+        }
+        return file
+    }
 }

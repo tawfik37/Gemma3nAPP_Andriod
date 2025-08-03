@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.yourname.androidllmapp.data.LLMManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.io.File
 import java.util.*
 
 data class Message(
@@ -106,4 +107,15 @@ class ChatViewModel : ViewModel() {
         messages.clear()
         messages.add(Message(content = "Chat cleared. Ready for a new conversation.", isUserMessage = false))
     }
+    fun deleteOldRecordings(context: Context) {
+        val dir = File(context.filesDir, "whisper_recordings")
+        if (dir.exists()) {
+            dir.listFiles()?.forEach { file ->
+                if (file.isFile && file.name.endsWith(".m4a")) {
+                    file.delete()
+                }
+            }
+        }
+    }
+
 }
