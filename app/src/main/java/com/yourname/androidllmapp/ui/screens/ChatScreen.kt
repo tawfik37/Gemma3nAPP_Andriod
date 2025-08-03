@@ -1,7 +1,5 @@
 package com.yourname.androidllmapp.ui.screens
 
-import android.content.Context
-import android.graphics.BitmapFactory
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -34,7 +32,6 @@ import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import com.yourname.androidllmapp.data.AudioRecorder
 import java.io.File
 import com.yourname.androidllmapp.data.WhisperBridge
-import com.yourname.androidllmapp.data.LLMManager.copyModelFromAssets
 import loadBitmapWithCorrectRotation
 
 @OptIn(ExperimentalMaterial3Api::class)
