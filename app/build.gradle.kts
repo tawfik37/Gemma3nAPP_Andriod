@@ -76,4 +76,6 @@ dependencies {
     implementation("com.google.mediapipe:tasks-vision:0.10.26")
     // ✅ Coil for images
     implementation("io.coil-kt:coil-compose:2.4.0")
+    //Text to speech
+    implementation("androidx.core:core-ktx:1.12.0")
 }

@@ -56,6 +56,7 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
 
     LaunchedEffect(Unit) {
         viewModel.initializeModel(context)
+        viewModel.initializeTTS(context)
     }
 
     if (sheetState.isVisible) {
@@ -111,7 +112,12 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                 .padding(8.dp)
         ) {
             items(viewModel.messages) { message ->
-                MessageBubble(message = message, isThinking = viewModel.isThinking.value)
+                MessageBubble(
+                    message = message,
+                    isThinking = viewModel.isThinking.value,
+                    targetLang = targetLang,
+                    viewModel = viewModel
+                )
                 Spacer(modifier = Modifier.height(6.dp))
             }
         }
@@ -152,7 +158,7 @@ fun DropdownMenuBox(
 }
 
 @Composable
-fun MessageBubble(message: Message, isThinking: Boolean) {
+fun MessageBubble(message: Message, isThinking: Boolean, targetLang: String, viewModel: ChatViewModel) {
     val isUser = message.isUserMessage
     val bubbleColor =
         if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
@@ -184,6 +190,14 @@ fun MessageBubble(message: Message, isThinking: Boolean) {
                 text = if (isThinking && !isUser) "Thinking..." else message.content,
                 color = textColor
             )
+            if (!message.isUserMessage) {
+                val context = LocalContext.current
+                TextButton(
+                    onClick = { viewModel.speakText(message.content, targetLang, context) }
+                ) {
+                    Text("🔈 Listen")
+                }
+            }
         }
     }
 }
