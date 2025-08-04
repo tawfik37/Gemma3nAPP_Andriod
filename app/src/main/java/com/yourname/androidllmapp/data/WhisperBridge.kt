@@ -24,9 +24,9 @@ object WhisperBridge {
             modelDir.mkdirs()
         }
 
-        val file = File(modelDir, "ggml-base.en.bin")
+        val file = File(modelDir, "ggml-tiny.bin")
         if (!file.exists()) {
-            context.assets.open("models/ggml-base.en.bin").use { input ->
+            context.assets.open("models/ggml-tiny.bin").use { input ->
                 FileOutputStream(file).use { output ->
                     input.copyTo(output)
                 }
