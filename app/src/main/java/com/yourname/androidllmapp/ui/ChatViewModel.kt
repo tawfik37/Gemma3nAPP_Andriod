@@ -1,6 +1,7 @@
 package com.yourname.androidllmapp.ui
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -11,6 +12,10 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.*
+import android.speech.tts.TextToSpeech
+import android.util.Log
+import android.widget.Toast
+import java.util.Locale
 
 data class Message(
     val id: String = UUID.randomUUID().toString(),
@@ -31,6 +36,11 @@ class ChatViewModel : ViewModel() {
     var isModelLoading = mutableStateOf(true)
     var isThinking = mutableStateOf(false)
     var isTranscribing = mutableStateOf(false)
+
+    //For Text to speech
+    private var tts: TextToSpeech? = null
+    var isTtsReady = mutableStateOf(false)
+
 
     // Inference settings (default values similar to iOS)
     var topK = mutableStateOf(40)
@@ -128,5 +138,45 @@ class ChatViewModel : ViewModel() {
             }
         }
     }
+    fun initializeTTS(context: Context) {
+        tts = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val result = tts!!.setLanguage(Locale.ENGLISH) // default
 
+                if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+                    Log.e("TTS", "Default language not supported or missing data")
+                }
+            } else {
+                Log.e("TTS", "Initialization failed")
+            }
+        }
+    }
+
+    fun speakText(text: String, lang: String, context: Context) {
+        val locale = when (lang.lowercase()) {
+            "arabic" -> Locale("ar")
+            "french" -> Locale.FRENCH
+            "german" -> Locale.GERMAN
+            "spanish" -> Locale("es")
+            else -> Locale.ENGLISH
+        }
+
+        val result = tts?.setLanguage(locale)
+
+        if (result == TextToSpeech.LANG_MISSING_DATA || result == TextToSpeech.LANG_NOT_SUPPORTED) {
+            Toast.makeText(context, "TTS data for $lang is missing. Opening TTS settings...", Toast.LENGTH_LONG).show()
+            val installIntent = Intent(TextToSpeech.Engine.ACTION_INSTALL_TTS_DATA)
+            context.startActivity(installIntent)
+            return
+        }
+
+        tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "ttsMessage")
+    }
+
+
+    override fun onCleared() {
+        tts?.stop()
+        tts?.shutdown()
+        super.onCleared()
+    }
 }
