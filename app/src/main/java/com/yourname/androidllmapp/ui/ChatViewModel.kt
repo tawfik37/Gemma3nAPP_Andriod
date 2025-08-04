@@ -179,4 +179,25 @@ class ChatViewModel : ViewModel() {
         tts?.shutdown()
         super.onCleared()
     }
+    fun askForContext(originalTranslation: String, sourceLang: String, targetLang: String, context: Context) {
+        isThinking.value = true
+        generationJob?.cancel()
+        generationJob = viewModelScope.launch {
+            try {
+                val prompt = """
+                You gave a translation: "$originalTranslation".
+                Now explain so brielfy and short this translation in its $targetLang context: usage, nuance, cultural significance, etc.
+                Please answer in $targetLang only.
+            """.trimIndent()
+
+
+                val response = LLMManager.generateTextResponse(prompt, sourceLang, targetLang)
+                messages.add(Message(content = response, isUserMessage = false))
+            } catch (e: Exception) {
+                messages.add(Message(content = "Error: ${e.message}", isUserMessage = false))
+            } finally {
+                isThinking.value = false
+            }
+        }
+    }
 }

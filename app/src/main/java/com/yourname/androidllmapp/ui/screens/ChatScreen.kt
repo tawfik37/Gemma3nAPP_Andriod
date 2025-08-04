@@ -116,6 +116,8 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                     message = message,
                     isThinking = viewModel.isThinking.value,
                     targetLang = targetLang,
+                    sourceLang = sourceLang,
+                    context = context,
                     viewModel = viewModel
                 )
                 Spacer(modifier = Modifier.height(6.dp))
@@ -158,7 +160,7 @@ fun DropdownMenuBox(
 }
 
 @Composable
-fun MessageBubble(message: Message, isThinking: Boolean, targetLang: String, viewModel: ChatViewModel) {
+fun MessageBubble(message: Message, isThinking: Boolean, targetLang: String, sourceLang: String, context: android.content.Context, viewModel: ChatViewModel) {
     val isUser = message.isUserMessage
     val bubbleColor =
         if (isUser) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface
@@ -196,6 +198,18 @@ fun MessageBubble(message: Message, isThinking: Boolean, targetLang: String, vie
                     onClick = { viewModel.speakText(message.content, targetLang, context) }
                 ) {
                     Text("🔈 Listen")
+                }
+                TextButton(
+                    onClick = {
+                        viewModel.askForContext(
+                            originalTranslation = message.content,
+                            sourceLang = sourceLang,
+                            targetLang = targetLang,
+                            context = context
+                        )
+                    }
+                ) {
+                    Text("💬 Ask more")
                 }
             }
         }
