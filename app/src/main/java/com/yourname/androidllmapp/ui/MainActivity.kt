@@ -28,7 +28,7 @@ fun deleteOldRecordings(context: android.content.Context) {
     val dir = File(context.filesDir, "whisper_recordings")
     if (dir.exists()) {
         dir.listFiles()?.forEach { file ->
-            if (file.isFile && (file.name.endsWith(".m4a") || file.name.endsWith(".wav"))) {
+            if (file.isFile && (file.name.endsWith(".wav") || file.name.endsWith(".wav"))) {
                 file.delete()
             }
         }

@@ -1,5 +1,7 @@
 package com.yourname.androidllmapp.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -33,10 +35,21 @@ import com.yourname.androidllmapp.data.AudioRecorder
 import java.io.File
 import com.yourname.androidllmapp.data.WhisperBridge
 import loadBitmapWithCorrectRotation
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import android.util.Log
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
+    val languages = listOf("English", "Arabic", "French", "Spanish", "German")
+    var sourceLang by remember { mutableStateOf("English") }
+    var targetLang by remember { mutableStateOf("Arabic") }
+
     val context = LocalContext.current
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val coroutineScope = rememberCoroutineScope()
@@ -74,6 +87,23 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
                 }
             }
         )
+        Row(modifier = Modifier.padding(8.dp)) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("From:")
+                DropdownMenuBox(languages, sourceLang) { selected ->
+                    sourceLang = selected
+                }
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text("To:")
+                DropdownMenuBox(languages, targetLang) { selected ->
+                    targetLang = selected
+                }
+            }
+        }
 
         LazyColumn(
             modifier = Modifier
@@ -87,7 +117,37 @@ fun ChatScreen(viewModel: ChatViewModel = viewModel()) {
         }
 
         Divider()
-        ChatInputArea(viewModel, context)
+        ChatInputArea(viewModel, context, sourceLang, targetLang)
+    }
+}
+
+@Composable
+fun DropdownMenuBox(
+    options: List<String>,
+    selectedOption: String,
+    onSelected: (String) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box {
+        TextButton(onClick = { expanded = true }) {
+            Text(selectedOption)
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            options.forEach { label ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    onClick = {
+                        onSelected(label)
+                        expanded = false
+                    }
+                )
+            }
+        }
     }
 }
 
@@ -130,16 +190,41 @@ fun MessageBubble(message: Message, isThinking: Boolean) {
 
 
 @Composable
-fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
+fun ChatInputArea(
+    viewModel: ChatViewModel,
+    context: android.content.Context,
+    sourceLang: String,
+    targetLang: String
+)
+ {
     var isRecording by remember { mutableStateOf(false) }
     var recordedFile: File? by remember { mutableStateOf(null) }
+     val scope = rememberCoroutineScope()
+     val permissionLauncher = rememberLauncherForActivityResult(
+         contract = ActivityResultContracts.RequestPermission()
+     ) { isGranted ->
+         if (isGranted) {
+             recordedFile = AudioRecorder.startRecording(context)
+             isRecording = true
+         } else {
+             Toast.makeText(context, "🎙️ Microphone permission denied", Toast.LENGTH_SHORT).show()
+         }
+     }
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
+     Row(verticalAlignment = Alignment.CenterVertically) {
         Button(
             onClick = {
                 if (!isRecording) {
-                    recordedFile = AudioRecorder.startRecording(context)
-                    isRecording = true
+                    val hasPermission = ContextCompat.checkSelfPermission(
+                        context, Manifest.permission.RECORD_AUDIO
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    if (hasPermission) {
+                        recordedFile = AudioRecorder.startRecording(context)
+                        isRecording = true
+                    } else {
+                        permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                    }
                 } else {
                     val file = AudioRecorder.stopRecording()
                     isRecording = false
@@ -148,19 +233,44 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
                     if (file != null && file.exists()) {
                         try {
                             val modelFile = WhisperBridge.copyWhisperModelFromAssets(context)
-                            val transcript = WhisperBridge.transcribe(file.absolutePath, modelFile.absolutePath)
-                            viewModel.inputText.value = transcript
-                            viewModel.sendMessage(context)
-                            file.delete() // optional
+                            Log.d("WhisperDebug", "Model path: ${modelFile.absolutePath}, size: ${modelFile.length()}")
+
+                            val audioFile = file ?: throw Exception("Audio file is null")
+                            Log.d("WhisperDebug", "Audio path: ${audioFile.absolutePath}, size: ${audioFile.length()}")
+
+                            if (viewModel.isTranscribing.value) {
+                                Toast.makeText(context, "⏳ Transcription in progress...", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+
+                            viewModel.isTranscribing.value = true
+
+                            scope.launch {
+                                try {
+                                    val transcript = withContext(Dispatchers.IO) {
+                                        WhisperBridge.transcribe(file.absolutePath, modelFile.absolutePath)
+                                    }
+                                    viewModel.inputText.value = transcript
+                                    viewModel.sendMessage(context, sourceLang, targetLang)
+                                    file.delete()
+                                } catch (e: Exception) {
+                                    Log.e("WhisperError", "Transcription failed", e)
+                                    Toast.makeText(context, "❌ Transcription failed", Toast.LENGTH_SHORT).show()
+                                } finally {
+                                    viewModel.isTranscribing.value = false
+                                }
+                            }
+
+
+
                         } catch (e: Exception) {
-                            e.printStackTrace()
+                            Log.e("WhisperError", "Transcription failed", e)
                             Toast.makeText(context, "❌ Transcription failed", Toast.LENGTH_SHORT).show()
                         }
-                    } else {
-                        Toast.makeText(context, "❌ No audio file found", Toast.LENGTH_SHORT).show()
                     }
                 }
             },
+            enabled = !viewModel.isTranscribing.value,
             shape = CircleShape,
             modifier = Modifier.size(50.dp),
             colors = ButtonDefaults.buttonColors(
@@ -260,7 +370,7 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
                         keyboardActions = KeyboardActions(
                             onSend = {
                                 if (viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null) {
-                                    viewModel.sendMessage(context)
+                                    viewModel.sendMessage(context, sourceLang, targetLang)
                                     keyboardController?.hide()
                                 }
                             }
@@ -278,7 +388,7 @@ fun ChatInputArea(viewModel: ChatViewModel, context: android.content.Context) {
                     } else {
                         Button(
                             onClick = {
-                                viewModel.sendMessage(context)
+                                viewModel.sendMessage(context, sourceLang, targetLang)
                                 keyboardController?.hide()
                             },
                             enabled = viewModel.inputText.value.isNotBlank() || viewModel.selectedImage.value != null,

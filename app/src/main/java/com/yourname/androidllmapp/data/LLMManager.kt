@@ -28,7 +28,7 @@ object LLMManager {
         modelName: String = modelIdentifier,
         topK: Int = 40,
         temperature: Float = 0.8f,
-        enableVision: Boolean = false
+        enableVision: Boolean = true
     ) {
         withContext(Dispatchers.IO) {
             if (llm != null && modelIdentifier == modelName) {
@@ -80,9 +80,11 @@ object LLMManager {
     /**
      * Send a text message and get the generated response.
      */
-    suspend fun generateTextResponse(prompt: String): String {
+    suspend fun generateTextResponse(prompt: String, sourceLang: String, targetLang: String): String
+    {
         return withContext(Dispatchers.IO) {
-            session?.addQueryChunk(prompt)
+            val translationPrompt = "Translate from $sourceLang to $targetLang: $prompt"
+            session?.addQueryChunk(translationPrompt)
             session?.generateResponse() ?: "LLM not initialized!"
         }
     }
@@ -107,7 +109,7 @@ object LLMManager {
         llm = null
     }
     fun copyModelFromAssets(context: Context): File {
-        val file = File(context.filesDir, "ggml-base.en.bin")
+        val file = File(context.filesDir, "models/ggml-base.en.bin")
         if (!file.exists()) {
             context.assets.open("models/ggml-base.en.bin").use { input ->
                 FileOutputStream(file).use { output ->
