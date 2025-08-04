@@ -30,6 +30,7 @@ class ChatViewModel : ViewModel() {
     // Loading states
     var isModelLoading = mutableStateOf(true)
     var isThinking = mutableStateOf(false)
+    var isTranscribing = mutableStateOf(false)
 
     // Inference settings (default values similar to iOS)
     var topK = mutableStateOf(40)
@@ -63,7 +64,8 @@ class ChatViewModel : ViewModel() {
     }
 
     /** Send message to LLM */
-    fun sendMessage(context: Context) {
+    fun sendMessage(context: Context, sourceLang: String, targetLang: String)
+    {
         val text = inputText.value.trim()
         val imageToSend = selectedImage.value
 
@@ -84,7 +86,16 @@ class ChatViewModel : ViewModel() {
                     LLMManager.addImageToContext(imageToSend)
                 }
 
-                val response = LLMManager.generateTextResponse(text.ifEmpty { " " })
+                val prompt = when {
+                    imageToSend != null && text.isBlank() -> {
+                        "Look at the image. Reply with the object name in $sourceLang, then in $targetLang, separated by a newline. Nothing else."
+                    }
+                    else -> {
+                        "Translate this to $targetLang. Only give the translated sentence: ${text.trim()}"
+                    }
+                }
+
+                val response = LLMManager.generateTextResponse(prompt, sourceLang, targetLang)
                 messages.add(Message(content = response, isUserMessage = false))
             } catch (e: Exception) {
                 messages.add(
@@ -111,7 +122,7 @@ class ChatViewModel : ViewModel() {
         val dir = File(context.filesDir, "whisper_recordings")
         if (dir.exists()) {
             dir.listFiles()?.forEach { file ->
-                if (file.isFile && file.name.endsWith(".m4a")) {
+                if (file.isFile && file.name.endsWith(".wav")) {
                     file.delete()
                 }
             }

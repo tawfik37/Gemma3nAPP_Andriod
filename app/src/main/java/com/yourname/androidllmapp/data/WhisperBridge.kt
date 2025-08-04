@@ -19,7 +19,12 @@ object WhisperBridge {
 
     // ✅ COPY MODEL FUNCTION HERE
     fun copyWhisperModelFromAssets(context: Context): File {
-        val file = File(context.filesDir, "ggml-base.en.bin")
+        val modelDir = File(context.filesDir, "models")
+        if (!modelDir.exists()) {
+            modelDir.mkdirs()
+        }
+
+        val file = File(modelDir, "ggml-base.en.bin")
         if (!file.exists()) {
             context.assets.open("models/ggml-base.en.bin").use { input ->
                 FileOutputStream(file).use { output ->
