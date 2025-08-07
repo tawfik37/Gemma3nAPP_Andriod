@@ -71,6 +71,7 @@ dependencies {
     implementation("androidx.camera:camera-lifecycle:1.3.1")
     implementation("androidx.camera:camera-view:1.3.1")
     implementation("androidx.camera:camera-extensions:1.3.1")
+    implementation("androidx.compose.material:material-icons-extended:1.6.0")
     // ✅ MediaPipe Tasks GenAI
     implementation("com.google.mediapipe:tasks-genai:0.10.24")
     implementation("com.google.mediapipe:tasks-vision:0.10.26")

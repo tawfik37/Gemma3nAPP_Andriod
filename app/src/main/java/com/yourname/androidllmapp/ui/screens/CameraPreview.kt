@@ -38,7 +38,7 @@ fun CameraPreview(
             .padding(16.dp),
         verticalArrangement = Arrangement.Center
     ) {
-        // ✅ Square Camera Preview (1:1 aspect ratio)
+        // Square Camera Preview (1:1 aspect ratio)
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth(0.9f)
@@ -77,7 +77,7 @@ fun CameraPreview(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // ✅ Capture & Close Buttons
+        // Capture & Close Buttons
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceEvenly
