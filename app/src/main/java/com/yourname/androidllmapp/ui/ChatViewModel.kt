@@ -15,6 +15,9 @@ import java.util.*
 import android.speech.tts.TextToSpeech
 import android.util.Log
 import android.widget.Toast
+import com.yourname.androidllmapp.data.WhisperBridge
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Locale
 
 data class Message(
@@ -22,7 +25,9 @@ data class Message(
     val content: String,
     val isUserMessage: Boolean,
     val timestamp: Long = System.currentTimeMillis(),
-    val image: Bitmap? = null
+    val image: Bitmap? = null,
+    val original: String? = null,
+    val isThinking: Boolean = false,
 )
 
 class ChatViewModel : ViewModel() {
@@ -36,10 +41,11 @@ class ChatViewModel : ViewModel() {
     var isModelLoading = mutableStateOf(true)
     var isThinking = mutableStateOf(false)
     var isTranscribing = mutableStateOf(false)
+    val followUpMessages = mutableStateListOf<Message>()
+
 
     //For Text to speech
     private var tts: TextToSpeech? = null
-    var isTtsReady = mutableStateOf(false)
 
 
     // Inference settings (default values similar to iOS)
@@ -50,21 +56,16 @@ class ChatViewModel : ViewModel() {
 
     private var generationJob: Job? = null
 
-    /** Initialize the model */
+    //Initialize the model
     fun initializeModel(context: Context, modelName: String = "gemma-3n-E2B-it-int4.task") {
         isModelLoading.value = true
         messages.clear()
-        messages.add(Message(content = "Initializing model... Please wait.", isUserMessage = false))
 
         viewModelScope.launch {
             try {
                 LLMManager.initialize(context, modelName)
                 isModelLoading.value = false
                 messages.clear()
-                messages.add(
-                    Message(content = "Model loaded successfully. Hello! How can I help?",
-                        isUserMessage = false)
-                )
             } catch (e: Exception) {
                 isModelLoading.value = false
                 messages.clear()
@@ -73,25 +74,33 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    /** Send message to LLM */
-    fun sendMessage(context: Context, sourceLang: String, targetLang: String)
-    {
+    // Send message to Gemma 3n
+    fun sendMessage(context: Context, sourceLang: String, targetLang: String) {
         val text = inputText.value.trim()
         val imageToSend = selectedImage.value
 
         if (text.isEmpty() && imageToSend == null) return
-
-        // Add user's message to the list
-        messages.add(Message(content = text, isUserMessage = true, image = imageToSend))
 
         inputText.value = ""
         selectedImage.value = null
         isThinking.value = true
 
         generationJob?.cancel()
+
+        // Add user's message
+        messages.add(Message(content = text, isUserMessage = true))
+
+        // Add placeholder bot message with "Thinking..."
+        val placeholder = Message(
+            content = "",
+            original = text,
+            isUserMessage = false,
+            isThinking = true
+        )
+        messages.add(placeholder)
+
         generationJob = viewModelScope.launch {
             try {
-                // If image is selected and vision is enabled
                 if (enableVisionModality.value && imageToSend != null) {
                     LLMManager.addImageToContext(imageToSend)
                 }
@@ -106,10 +115,23 @@ class ChatViewModel : ViewModel() {
                 }
 
                 val response = LLMManager.generateTextResponse(prompt, sourceLang, targetLang)
-                messages.add(Message(content = response, isUserMessage = false))
+
+                // Replace the placeholder with the real response
+                val index = messages.indexOfFirst { it.id == placeholder.id }
+                if (index != -1) {
+                    messages[index] = placeholder.copy(
+                        content = response,
+                        isThinking = false
+                    )
+                }
+
             } catch (e: Exception) {
                 messages.add(
-                    Message(content = "Error generating response: ${e.message}", isUserMessage = false)
+                    Message(
+                        content = "Error generating response: ${e.message}",
+                        isUserMessage = false,
+                        original = text
+                    )
                 )
             } finally {
                 isThinking.value = false
@@ -117,17 +139,14 @@ class ChatViewModel : ViewModel() {
         }
     }
 
-    /** Stop ongoing generation */
-    fun stopGeneration() {
-        generationJob?.cancel()
-        isThinking.value = false
-    }
 
-    /** Clear chat history */
+    //Clear chat history
     fun clearChat() {
         messages.clear()
         messages.add(Message(content = "Chat cleared. Ready for a new conversation.", isUserMessage = false))
     }
+
+    //still not used
     fun deleteOldRecordings(context: Context) {
         val dir = File(context.filesDir, "whisper_recordings")
         if (dir.exists()) {
@@ -174,30 +193,57 @@ class ChatViewModel : ViewModel() {
     }
 
 
+    fun transcribeAndSend(file: File, context: Context, sourceLang: String, targetLang: String) {
+        val modelFile = WhisperBridge.copyWhisperModelFromAssets(context)
+        viewModelScope.launch {
+            isTranscribing.value = true
+            try {
+                val transcript = withContext(Dispatchers.IO) {
+                    WhisperBridge.transcribe(file.absolutePath, modelFile.absolutePath)
+                }
+                inputText.value = transcript
+                sendMessage(context, sourceLang, targetLang)
+                file.delete()
+            } catch (e: Exception) {
+                Log.e("WhisperError", "Transcription failed", e)
+                Toast.makeText(context, "❌ Transcription failed", Toast.LENGTH_SHORT).show()
+            } finally {
+                isTranscribing.value = false
+            }
+        }
+    }
+
+    fun sendFollowUpMessage(
+        query: String,
+        originalMessage: String,
+        context: Context,
+        sourceLang: String,
+        targetLang: String
+    ) {
+        followUpMessages.add(Message(content = query, isUserMessage = true))
+        viewModelScope.launch {
+            try {
+                val prompt = """
+                    The following is a translation: "$originalMessage".
+                
+                    Answer the user's question based on it:
+                    "$query"
+                
+                    Do not translate anything.
+                    Respond in English only. No other languages.
+                """.trimIndent()
+
+                val response = LLMManager.generateTextResponse(prompt, sourceLang, targetLang)
+                followUpMessages.add(Message(content = response, isUserMessage = false))
+            } catch (e: Exception) {
+                followUpMessages.add(Message(content = "Error: ${e.message}", isUserMessage = false))
+            }
+        }
+    }
+
     override fun onCleared() {
         tts?.stop()
         tts?.shutdown()
         super.onCleared()
-    }
-    fun askForContext(originalTranslation: String, sourceLang: String, targetLang: String, context: Context) {
-        isThinking.value = true
-        generationJob?.cancel()
-        generationJob = viewModelScope.launch {
-            try {
-                val prompt = """
-                You gave a translation: "$originalTranslation".
-                Now explain so brielfy and short this translation in its $targetLang context: usage, nuance, cultural significance, etc.
-                Please answer in $targetLang only.
-            """.trimIndent()
-
-
-                val response = LLMManager.generateTextResponse(prompt, sourceLang, targetLang)
-                messages.add(Message(content = response, isUserMessage = false))
-            } catch (e: Exception) {
-                messages.add(Message(content = "Error: ${e.message}", isUserMessage = false))
-            } finally {
-                isThinking.value = false
-            }
-        }
     }
 }
